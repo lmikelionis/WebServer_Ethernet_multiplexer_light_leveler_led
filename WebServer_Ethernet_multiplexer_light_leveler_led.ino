@@ -1,16 +1,3 @@
-// SIMPLE REQUEST
-// http://192.168.1.46/?&PAR01=255&PAR02=200|
-
-//GET /?&PAR01=100&PAR02=200| HTTP/1.1
-//Host: 192.168.1.46
-//Connection: keep-alive
-//Accept: */*
-//Origin: null
-//User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.90 Safari/537.36
-//Accept-Encoding: gzip, deflate
-//Accept-Language: lt,en-US;q=0.8,en;q=0.6,ru;q=0.4,pl;q=0.2
-
-
 //#include <RGB_Driver.h>
 #include <I2C.h>
 #include <EtherCard.h>
@@ -22,8 +9,8 @@
 int redPin = 3;
 int greenPin = 6;
 int bluePin = 5;
-int whiteWarmPin = 9;
-int whiteColdPin = 10;
+int coldWhitePin = 9;
+int warmWhitePin = 10;
 
 int whiteLevel = 1;
 int whiteLevelLock = 5;
@@ -34,7 +21,6 @@ int coldWhiteLevelLockMin = 5;
 int span = 1500;
 
 String rgbDriverMode = "";
-
 
 // ETHERNET
 static byte myip[] = { 192,168,1,46 };
@@ -62,13 +48,8 @@ void setup() {
   if (ether.begin(sizeof Ethernet::buffer, mymac) == 0) {
     Serial.println(F("Failed to access Ethernet controller"));
   }
-    
   ether.staticSetup(myip);
-
   ether.printIp("IP:  ", ether.myip);
-  ether.printIp("GW:  ", ether.gwip);  
-  ether.printIp("DNS: ", ether.dnsip);  
-  ether.printIp("NetMask: ", ether.netmask);
 
   // Setup sensor for light level monitoring
   I2c.begin();
@@ -89,24 +70,18 @@ void loop() {
 
         char* data = (char *) Ethernet::buffer + pos;
 
-        //String strrr((char *) Ethernet::buffer + pos);
-    
-        //      strcpy((char *)data,"0123");
-        //      String myString = String((char *) Ethernet::buffer + pos);
-        //      Serial.println(myString);
-
         // Get your params.
         Get_params_parser parmParser(data);
         String rgbDriverState = parmParser.getParamValue("PARAM01");
-        String mode = parmParser.getParamValue("PARAM02");
-        
+        String mode = parmParser.getParamValue("PARAM02");     
         String coldWhite = parmParser.getParamValue("PARAM03");
-        Serial.print(F("coldWhite: "));
-        Serial.println(coldWhite);
+        
+//        Serial.print(F("coldWhite: "));
+//        Serial.println(coldWhite);
 
-//        Serial.println(p2.toInt());
+        execute_RGB_program(mode.toInt());
 
-        word rspns = httpResponse(sensVal, rgbDriverState.toInt(), mode.toInt(), 0, 0, 0, 0, 0);
+        word rspns = httpResponse(sensVal, rgbDriverState.toInt(), mode.toInt(), coldWhite.toInt(), 0, 0, 0, 0);
         ether.httpServerReply(rspns);
     } else {
       I2c.read(0x4A, 0x3, 6);
@@ -116,30 +91,31 @@ void loop() {
 //      Serial.println(F("NOT RECEIVED A REQUEST"));
     }
 
-    multiplexer.writeTo(0, 255);
-    multiplexer.writeTo(1, 255);
-
-    multiplexer.writeTo(2, 255);
-    multiplexer.writeTo(3, 255);
-    multiplexer.writeTo(4, 255);
-    delay(5000);
-
-    multiplexer.writeTo(0, 0);
-    multiplexer.writeTo(1, 0);
-
-    multiplexer.writeTo(2, 0);
-    multiplexer.writeTo(3, 0);
-    multiplexer.writeTo(4, 0);
-    delay(5000);
+//    multiplexer.writeTo(0, 255);
+//    delay(50000);
 }
 
-int adjustLight(uint8_t coldWhitePin, int warmWhitePin, int redPin) {
+void execute_RGB_program(int mode) {
+  if (mode == 0) {
+    // ADAPTIVE
+    adjustLight(coldWhitePin, warmWhitePin, redPin, greenPin, bluePin);
+  } else if(mode == "TIMED") {
+    // TIMED
+  } else if(mode == "MANUAL") {
+    // MANUAL
+  } else if(mode == "EFFECTS") {
+    // EFFECTS
+  }
+}
+
+int adjustLight(int coldWhitePin, int warmWhitePin, int redPin, int greenPin, int bluePin) {
   
   analogWrite(redPin, whiteLevel); 
     
   if (sensVal < whiteLevelLockMax && whiteLevel <= 240){
     whiteLevel++;
-    analogWrite(whiteWarmPin, whiteLevel); 
+    analogWrite(coldWhitePin, whiteLevel);
+    analogWrite(warmWhitePin, whiteLevel); 
     analogWrite(redPin, whiteLevel);
 
     if (whiteLevel > 140 && whiteLevel < 240) {
@@ -149,27 +125,16 @@ int adjustLight(uint8_t coldWhitePin, int warmWhitePin, int redPin) {
     delay(timeOffset);
   } else if (sensVal > whiteLevelLockMin && whiteLevel > 0){
     whiteLevel--;
-    analogWrite(whiteWarmPin, whiteLevel); 
-
+    analogWrite(coldWhitePin, whiteLevel); 
+    analogWrite(warmWhitePin, whiteLevel);
     analogWrite(redPin, whiteLevel); 
+    
     delay(timeOffset);
   }
 
-    Serial.print("---- CURRENT LIGHT POWER LEVEL  = ");
-    Serial.println(whiteLevel);
-    Serial.println(" ---- ---- ---- ---- ---- ---- ---- ");  
-}
-
-void execute_RGB_program(String mode) {
-  if (mode == 0) {
-//    adjustLight(C0);/
-  } else if(mode == "TIMED") {
-    
-  } else if(mode == "MANUAL") {
-    
-  } else if(mode == "EFFECTS") {
-    
-  }
+  Serial.print("---- CURRENT LIGHT POWER LEVEL  = ");
+  Serial.println(whiteLevel);
+  Serial.println(" ---- ---- ---- ---- ---- ---- ---- ");  
 }
 
 static word httpResponse(int sensorValue, int state, int mode, int coldWhite, int warmWhite, int red, int green, int blue) {
