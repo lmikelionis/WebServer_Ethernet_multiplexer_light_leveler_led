@@ -1,11 +1,21 @@
 //#include <RGB_Driver.h>
 #include <I2C.h>
 #include <EtherCard.h>
-#include <Vtech_multiplexer.h>
 #include <Get_params_parser.h>
 
 
 // LIGHTING
+String ledStatus = "1";
+String mode = "1";
+
+String coldWhite = "0";
+String warmWhite = "0";
+
+String red = "150";
+String green = "0";
+String blue = "0";
+
+
 int whiteLevel = 1;
 int whiteLevelLock = 5;
 int whiteLevelLockMax = 45;
@@ -13,6 +23,8 @@ int whiteLevelLockMin = 2;
 int coldWhiteLevelMax = 250;
 int coldWhiteLevelLockMin = 5;
 int span = 1500;
+
+int testTimeOffset = 100;
 
 String rgbDriverMode = "";
 
@@ -25,18 +37,20 @@ static byte mymac[] = { 0x74,0x69,0x69,0x2D,0x30,0x31 };
 byte Ethernet::buffer[400]; // tcp/ip send and receive buffer
 BufferFiller bfill;
 
-int timeOffset = 100;
+int timeOffset = 2500;
 int sensVal = 0;
+
 
 void setup() {
   Serial.begin(115200);
-  Serial.println(F("====== SETUP HAD BEGAN ========"));
+//  Serial.println(F("====== SETUP HAD BEGAN ========"));
 
   // Scan only to get address ONCE !!!
   //  I2c.scan();
+
   
   // ETHERCARD SETUP
-  if (ether.begin(sizeof Ethernet::buffer, mymac, 8) == 0) {
+  if (ether.begin(sizeof Ethernet::buffer, mymac, 53) == 0) {
     Serial.println(F("Failed to access Ethernet controller"));
   }
   ether.staticSetup(myip);
@@ -48,32 +62,22 @@ void setup() {
   I2c.write(0x4A, 0x01, 0x0);
   I2c.write(0x4A, 0x02, 0x00);
 
-  resetLedOutputs();
-  
-  Serial.println(F("====== SETUP COMPLETED ========"));
-}
+  // resetLedOutputs();
 
-void execute_RGB_program(int mode) {
-//  resetLedOutputs();
-  if (mode == 0) {
-    // ADAPTIVE
-    adjustLight();
-  } else if(mode == "TIMED") {
-    // TIMED
-  } else if(mode == "MANUAL") {
-    // MANUAL
-  } else if(mode == 3) {
-    testRgbCCTCycle();
-  }
+  Serial.println(F("====== SETUP COMPLETED ========"));
+  delay(3000);
 }
 
 void loop() {
-  String mode = "3";
-  execute_RGB_program(mode.toInt());
 
-  resetLedOutputs();
+  //testRgbCCTCycle();
+  //delay(5000);
+  
   word len = ether.packetReceive();
-  resetLedOutputs(); // !!! IMPORTANT TO AVOID WHITE FLAS, AS MISO PIN IS USED FOR WHITE
+  
+  // resetLedOutputs(); // !!! IMPORTANT TO AVOID WHITE FLAS, AS MISO PIN IS USED FOR WHITE
+  execute_RGB_program(ledStatus.toInt(), mode.toInt(), coldWhite.toInt(), warmWhite.toInt(), red.toInt(), green.toInt(), blue.toInt());
+  
   word pos = ether.packetLoop(len);
     
   // check if valid tcp data is received
@@ -83,56 +87,151 @@ void loop() {
     char* data = (char *) Ethernet::buffer + pos;
 
     // Get your params.
-    Get_params_parser parmParser(data);
-    String rgbDriverState = parmParser.getParamValue("PARAM01");
-    String mode = parmParser.getParamValue("PARAM02");     
-    String coldWhite = parmParser.getParamValue("PARAM03");
+    Get_params_parser *parmParser  = new Get_params_parser(data);
 
-    word rspns = httpResponse(sensVal, rgbDriverState.toInt(), mode.toInt(), coldWhite.toInt(), 0, 0, 0, 0);
-    ether.httpServerReply(rspns);
-  } else {
-    resetLedOutputs();
-    I2c.read(0x4A, 0x3, 6);
-    sensVal = I2c.receive();
-    resetLedOutputs();
+    String ledStatusTmp = parmParser->getParamValue("&1");
     
-    Serial.print(F("---- CURRENT LIGHT LEVEL SENSOR = "));
-    Serial.println(sensVal);
-    Serial.println(F("NOT RECEIVED A REQUEST"));
+   if(isDigit(ledStatusTmp.charAt(0))) {
+
+    Serial.println(F("The ledStatusTmp was a number"));
+    ledStatus = ledStatusTmp;
+    
+    if (ledStatus.toInt() == 1) {
+
+      String modeTmp = parmParser->getParamValue("&2");     
+      String coldWhiteTmp = parmParser->getParamValue("&3");
+      String warmWhiteTmp = parmParser->getParamValue("&4");
+      String redTmp = parmParser->getParamValue("&5");
+      String greenTmp = parmParser->getParamValue("&6");
+      String blueTmp = parmParser->getParamValue("&7");
+  
+      delete parmParser;
+    
+    
+        if (isDigit(modeTmp.charAt(0))) {
+//          Serial.println(F("The modeTmp was a number"));
+//          Serial.println(modeTmp);
+          mode = modeTmp;
+        }
+    
+        if (isDigit(coldWhiteTmp.charAt(0))) {
+          coldWhite = coldWhiteTmp;
+        }
+    
+        if (isDigit(warmWhiteTmp.charAt(0))) {
+          warmWhite = warmWhiteTmp;
+        }
+    
+        if (isDigit(redTmp.charAt(0))) {
+          red = redTmp;
+        }
+    
+        if (isDigit(greenTmp.charAt(0))) {
+          green = greenTmp;
+        }
+    
+        if (isDigit(blueTmp.charAt(0))) {
+          blue = blueTmp;
+        }
+    } else {
+      ledStatus = "1";
+    }
   }
+    word rspns = httpResponse(sensVal, ledStatus.toInt(), mode.toInt(), coldWhite.toInt(), warmWhite.toInt(), red.toInt(), green.toInt(), blue.toInt());
+    ether.httpServerReply(rspns);
+  }
+  
+  I2c.read(0x4A, 0x3, 6);
+  sensVal = I2c.receive();
+  
+//  Serial.print(F("---- CURRENT LIGHT LEVEL SENSOR = "));
+//  Serial.println(sensVal);
 }
 
+void execute_RGB_program(int state, int mode, int ww, int cw, int red, int green, int blue) {
+  Serial.print(F("====== execute_RGB_program STATE = "));
+  Serial.println(state);
+  Serial.print(F("====== execute_RGB_program MODE = "));
+  Serial.println(mode);
+  
+  if(state == 1) {
+    if (mode == 0) {
+      // ADAPTIVE
+      Serial.println(F("====== WILL SET AJUST ========"));
+//      adjustLight();
+    } else if(mode == 1) {
+      // MANUAL
+      Serial.println(F("====== WILL SET MANUAL MODE 1 ========"));
+      setManualMode(ww, cw, red, green, blue);
+    } else if(mode == 2) {
+      // TIMED
+    } else if(mode == 3) {
+      Serial.println(F("====== WILL SET DEMO ========"));
+      testRgbCCTCycle();
+    }
+  } else {
+    Serial.println(F("====== LEDS ARE OFF ========"));
+    turnLedsOff();
+  }
+
+    Serial.println(F("Current settings"));
+//    Serial.println(ledStatus);
+//    Serial.println(mode);
+    Serial.println(coldWhite);
+    Serial.println(warmWhite);
+    Serial.println(red);
+    Serial.println(green);
+    Serial.println(blue);
+    Serial.println(F("..."));
+//    delay(500);/
+}
+
+void turnLedsOff() {
+  setColdWhite(0);
+  setWarmWhite(0);
+  setRed(0);
+  setGreen(0);
+  setBlue(0); 
+}
+
+void setManualMode(int ww, int cw, int red, int green, int blue) {
+  Serial.println(F("====== WILL SET MANUAL MODE 2 ========"));
+//  delay(500);
+  setColdWhite(ww);
+  setWarmWhite(cw);
+  setRed(red);
+  setGreen(green);
+  setBlue(blue);
+  delay(10);
+}
 
 void setColor(uint8_t pin, int value ) {
   analogWrite(pin, value);
-  Serial.print(pin);
-  Serial.print(" - ");
-  Serial.println(value);
 }
 
 void setColdWhite(int value) {
-  uint8_t whitePinn = 3;
+  uint8_t whitePinn = 2;
   setColor(whitePinn, value);
 }
 
 void setWarmWhite(int value) {
-  uint8_t warmWhite = 5;
+  uint8_t warmWhite = 6;
   setColor(warmWhite, value);
 }
 
 void setRed(int value) {
-  uint8_t redPin = 6;
+  uint8_t redPin = 4;
   setColor(redPin, value);
 }
 
 void setGreen(int value) {
-  uint8_t greenPin = 9;
+  uint8_t greenPin = 7;
   setColor(greenPin, value);
 }
 
 void setBlue(int value) {
-  uint8_t redBlue = 10;
-  setColor(redBlue, value);
+  uint8_t bluePin = 9;
+  setColor(bluePin, value);
 }
 
 int adjustLight() {
@@ -157,10 +256,6 @@ int adjustLight() {
     
     delay(timeOffset);
   }
-
-//  Serial.print("---- CURRENT LIGHT POWER LEVEL  = ");
-//  Serial.println(whiteLevel);
-//  Serial.println(" ---- ---- ---- ---- ---- ---- ---- ");  
 }
 
 static word httpResponse(int sensorValue, int state, int mode, int coldWhite, int warmWhite, int red, int green, int blue) {
@@ -184,78 +279,80 @@ static word httpResponse(int sensorValue, int state, int mode, int coldWhite, in
       "}"
     ), 
     sensorValue, state, mode, coldWhite, warmWhite, red, green, blue);
-    Serial.println("---- RESPONSE WAS SENT  = ");
+    Serial.println("---- RESPONSE WAS SENT  ---- ");
     return bfill.position();
 }
 
 void resetLedOutputs() {
-//  pinMode(3, OUTPUT);
-//  pinMode(5, OUTPUT);
-//  pinMode(6, OUTPUT);
-//  pinMode(9, OUTPUT);
-//  pinMode(10, OUTPUT);
+  pinMode(2, OUTPUT);
+  pinMode(3, OUTPUT);
+  pinMode(4, OUTPUT);
+  pinMode(5, OUTPUT);
+  pinMode(6, OUTPUT);
 
+  analogWrite(2, 0);
   analogWrite(3, 0);
+  analogWrite(4, 0);
   analogWrite(5, 0);
   analogWrite(6, 0);
-  analogWrite(9, 0);
-  analogWrite(10, 0);
 }
 
 void testRgbCCTCycle() {
-  delay(2000);
-//  setColdWhite(0);
-//  delay(timeOffset);
-//  setColdWhite(1);
-//  delay(timeOffset);
-//  setColdWhite(150);
-//  delay(timeOffset);
-//  setColdWhite(255);
-//  delay(timeOffset);
-//  setColdWhite(0);
-//
-//  setWarmWhite(0);
-//  delay(timeOffset);
-//  setWarmWhite(50);
-//  delay(timeOffset);
-//  setWarmWhite(100);
-//  delay(timeOffset);
-//  setWarmWhite(200);
-//  delay(timeOffset);
-//  setWarmWhite(255);
-//  delay(timeOffset);
-//  setWarmWhite(0);
-//
+  
+  Serial.println("---- ENTERED INTO LED DEMO MODE  ---- ");
+  
+  setColdWhite(0);
+  delay(testTimeOffset);
+  setColdWhite(50);
+  delay(testTimeOffset);
+  setColdWhite(155);
+  delay(testTimeOffset);
+  setColdWhite(255);
+  delay(testTimeOffset);
+  setColdWhite(0);
+
+
+  setWarmWhite(0);
+  delay(testTimeOffset);
+  setWarmWhite(50);
+  delay(testTimeOffset);
+  setWarmWhite(155);
+  delay(testTimeOffset);
+  setWarmWhite(255);
+  delay(testTimeOffset);
+  setWarmWhite(0);
+
+  
   setRed(0);
-  delay(timeOffset);
+  delay(testTimeOffset);
   setRed(50);
-  delay(timeOffset);
+  delay(testTimeOffset);
   setRed(155);
-  delay(timeOffset);
+  delay(testTimeOffset);
   setRed(255);
-  delay(timeOffset);
+  delay(testTimeOffset);
   setRed(0);
-//
+
   setGreen(0);
-  delay(timeOffset);
+  delay(testTimeOffset);
   setGreen(50);
-  delay(timeOffset);
+  delay(testTimeOffset);
   setGreen(155);
-  delay(timeOffset);
+  delay(testTimeOffset);
   setGreen(255);
-  delay(timeOffset);
+  delay(testTimeOffset);
   setGreen(0);
 
   setBlue(0);
-  delay(timeOffset);
+  delay(testTimeOffset);
   setBlue(1);
-  delay(timeOffset);
+  delay(testTimeOffset);
   setBlue(50);
-  delay(timeOffset);
+  delay(testTimeOffset);
   setBlue(155);
-  delay(timeOffset);
+  delay(testTimeOffset);
   setBlue(255);
-  delay(timeOffset);
+  delay(testTimeOffset);
   setBlue(0);
 }
 
