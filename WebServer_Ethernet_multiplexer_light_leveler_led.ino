@@ -43,7 +43,7 @@ int sensVal = 0;
 
 void setup() {
   Serial.begin(115200);
-//  Serial.println(F("====== SETUP HAD BEGAN ========"));
+  Serial.println(F("====== SETUP HAD BEGAN ========"));
 
   // Scan only to get address ONCE !!!
   //  I2c.scan();
@@ -93,8 +93,22 @@ void loop() {
     
    if(isDigit(ledStatusTmp.charAt(0))) {
 
-    Serial.println(F("The ledStatusTmp was a number"));
-    ledStatus = ledStatusTmp;
+//    Serial.println(F("The ledStatusTmp was a number"));
+
+    String ledStatusOld = ledStatus;
+
+//    Serial.print(F("Old LED STATUS IS: "));
+//    Serial.println(ledStatusOld);
+
+    if (ledStatusTmp.toInt() == 3) {
+      Serial.println(F("The ledStatusTmp was a number 3"));
+      ledStatus = ledStatusOld;
+    } else {
+      ledStatus = ledStatusTmp;
+    }
+
+//    Serial.print(F("New LED STATUS IS: "));
+//    Serial.println(ledStatus);
     
     if (ledStatus.toInt() == 1) {
 
@@ -111,7 +125,7 @@ void loop() {
         if (isDigit(modeTmp.charAt(0))) {
 //          Serial.println(F("The modeTmp was a number"));
 //          Serial.println(modeTmp);
-          mode = modeTmp;
+            mode = modeTmp;
         }
     
         if (isDigit(coldWhiteTmp.charAt(0))) {
@@ -133,9 +147,12 @@ void loop() {
         if (isDigit(blueTmp.charAt(0))) {
           blue = blueTmp;
         }
-    } else {
-      ledStatus = "1";
+    } 
+    
+    if (ledStatus.toInt() == 0) {
+      ledStatus = "0";
     }
+
   }
     word rspns = httpResponse(sensVal, ledStatus.toInt(), mode.toInt(), coldWhite.toInt(), warmWhite.toInt(), red.toInt(), green.toInt(), blue.toInt());
     ether.httpServerReply(rspns);
@@ -151,6 +168,7 @@ void loop() {
 void execute_RGB_program(int state, int mode, int ww, int cw, int red, int green, int blue) {
   Serial.print(F("====== execute_RGB_program STATE = "));
   Serial.println(state);
+  delay(100);
   Serial.print(F("====== execute_RGB_program MODE = "));
   Serial.println(mode);
   
