@@ -24,7 +24,7 @@ int coldWhiteLevelMax = 250;
 int coldWhiteLevelLockMin = 5;
 int span = 1500;
 
-int testTimeOffset = 100;
+int testTimeOffset = 30;
 
 String rgbDriverMode = "";
 
@@ -65,14 +65,10 @@ void setup() {
   // resetLedOutputs();
 
   Serial.println(F("====== SETUP COMPLETED ========"));
-  delay(3000);
+  delay(1000);
 }
 
 void loop() {
-
-  //testRgbCCTCycle();
-  //delay(5000);
-  
   word len = ether.packetReceive();
   
   // resetLedOutputs(); // !!! IMPORTANT TO AVOID WHITE FLAS, AS MISO PIN IS USED FOR WHITE
@@ -82,6 +78,9 @@ void loop() {
     
   // check if valid tcp data is received
   if (pos) {
+
+   Serial.print(F("HAR RECEIVED SOME DATA !!! "));
+    
     bfill = ether.tcpOffset();
 
     char* data = (char *) Ethernet::buffer + pos;
@@ -97,18 +96,12 @@ void loop() {
 
     String ledStatusOld = ledStatus;
 
-//    Serial.print(F("Old LED STATUS IS: "));
-//    Serial.println(ledStatusOld);
-
     if (ledStatusTmp.toInt() == 3) {
       Serial.println(F("The ledStatusTmp was a number 3"));
       ledStatus = ledStatusOld;
     } else {
       ledStatus = ledStatusTmp;
     }
-
-//    Serial.print(F("New LED STATUS IS: "));
-//    Serial.println(ledStatus);
     
     if (ledStatus.toInt() == 1) {
 
@@ -168,7 +161,6 @@ void loop() {
 void execute_RGB_program(int state, int mode, int ww, int cw, int red, int green, int blue) {
   Serial.print(F("====== execute_RGB_program STATE = "));
   Serial.println(state);
-  delay(100);
   Serial.print(F("====== execute_RGB_program MODE = "));
   Serial.println(mode);
   
@@ -186,6 +178,7 @@ void execute_RGB_program(int state, int mode, int ww, int cw, int red, int green
     } else if(mode == 3) {
       Serial.println(F("====== WILL SET DEMO ========"));
       testRgbCCTCycle();
+      delay(100);
     }
   } else {
     Serial.println(F("====== LEDS ARE OFF ========"));
@@ -285,7 +278,7 @@ static word httpResponse(int sensorValue, int state, int mode, int coldWhite, in
     "Access-Control-Allow-Origin: *\r\n"
     "\r\n"
       "{"
-      "\"version\": \"0.0.1\","
+      "\"version\": \"0.0.2\","
       "\"reading\": \"$D\","
       "\"state\": \"$D\","
       "\"mode\": \"$D\","
